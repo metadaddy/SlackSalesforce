@@ -41,7 +41,7 @@ function createLead(user, company) {
   })
   .then(function(ret) {
     console.log("Created lead id : " + ret.id);
-    createChatterMessage(ret.id);
+    chatterNewEntity(ret.id, "Lead", user.profile.display_name);
   }, function(err) {
     return console.error(err); 
   });
@@ -60,14 +60,50 @@ function createContact(user, accountId) {
   })
   .then(function(ret) {
     console.log("Created contact id : " + ret.id);
-    createChatterMessage(ret.id);
+    chatterNewEntity(ret.id, "Contact", user.profile.display_name);
   }, function(err) {
     return console.error(err); 
   });  
 }
 
-function createChatterMessage(id) {
-  
+function chatterEntity(id, text, displayName) {
+  conn.chatter.resource('/feed-elements').create({
+    body : {
+      messageSegments : [
+       {
+         type : "Text",
+         text : text
+       },
+       {
+         type : "MarkupBegin",
+         markupType : "Bold"
+       },
+       {
+         type : "Text",
+         text : displayName
+       },
+       {
+         type : "MarkupEnd",
+         markupType : "Bold"
+       },
+      ]
+    },
+    feedElementType : "FeedItem",
+    subjectId : id
+  })
+  .then(function (ret){
+    console.log("Created feed item: " + ret.id);
+  }, function (err) {
+    console.error(err);
+  });
+}
+
+function chatterExistingEntity(id, type, displayName) {
+  chatterEntity(id, type+" joined Community Slack as ", displayName);
+}
+
+function chatterNewEntity(id, type, displayName) {
+  chatterEntity(id, "New "+type+" joined Community Slack as ", displayName);
 }
 
 function soslEscape(str) {
@@ -90,7 +126,7 @@ app.post('/', function (req, res, next) {
   }
 
   var user = req.body.event.user;
-  console.log("user in request", user);
+  console.log("user from request", user);
 
   var domain;
 
@@ -100,12 +136,9 @@ app.post('/', function (req, res, next) {
     json: true
   })
   .then(function(ret){
-    console.log(ret);
+    console.log("user from API", ret);
     user.profile.email = ret.profile.email;
-  }, function(err) {
-    return console.error(err); 
-  })
-  .then(function(ret){
+
     domain = user.profile.email.split('@')[1];
     console.log("domain", domain);
 
@@ -127,9 +160,10 @@ app.post('/', function (req, res, next) {
   .then(function(ret) {
     console.log("Search results", ret.searchRecords);
     if (ret.searchRecords.length > 0) {
-      contactId = ret.searchRecords[0].Id;
-      console.log("Found "+ret.searchRecords[0].attributes.type+" with id", contactId);
-      createChatterMessage(contactId);
+      var id = ret.searchRecords[0].Id;
+      var type = ret.searchRecords[0].attributes.type;
+      console.log("Found "+type+" with id", id);
+      chatterExistingEntity(id, type, user.profile.display_name);
     } else {
       // Check email address with Kickfire
       rp({
@@ -141,9 +175,10 @@ app.post('/', function (req, res, next) {
         if (ret.status === "success" && ret.data[0].isISP === 0) {
           var company = ret.data[0].name;
           // Search for account/contact using email address domain
-          conn.search("FIND {"+domain+"} IN ALL FIELDS RETURNING Account(Id, Name), Contact(Id, AccountId)")
+          conn.search("FIND {"+domain+"} IN ALL FIELDS RETURNING Account(Id, Name, OwnerId), Contact(Id, AccountId)")
           .then(function(ret) {
             var accountId;
+            var ownerId;
             console.log("Search results", ret.searchRecords);
             // Do we have results?
             if (ret.searchRecords.length > 0) {
@@ -152,24 +187,37 @@ app.post('/', function (req, res, next) {
               && (ret.searchRecords.length == 1 || ret.searchRecords[1].attributes.type != 'Account')) {
                 console.log("Found account", ret.searchRecords[0].Name);
                 accountId = ret.searchRecords[0].Id;
+                ownerId = ret.searchRecords[0].OwnerId;
+                createContact(user, accountId, ownerId);
               } else if (ret.searchRecords[0].attributes.type == 'Contact') {
                 // Use first matching contact
                 accountId = ret.searchRecords[0].AccountId;
+                // Get account owner
+                conn.sobject("Account").retrieve(accountId)
+                .then(function (ret) {
+                  console.log("Account", ret);
+                  ownerId = ret.OwnerId;
+                  createContact(user, accountId, ownerId);              
+                }, function (err) {
+                  return console.error(err);
+                });
               }
             }
-            if (accountId) {
-              console.log("Found accountId", accountId);
-              createContact(user, accountId);              
-            } else {
+            if (!accountId) {
               console.log("No accountId");
-              createLead(user, company);
+              // Couldn't find an account
+              if (company) {
+                createLead(user, company);
+              } else {
+                createLead(user, "Unknown");
+              }
             }
           }, function(err) {
             return console.error(err); 
           });
         } else {
           // Kickfire didn't find a match, or it's an ISP email address
-          return createLead(user, "Unknown");
+          createLead(user, "Unknown");
         }
       }, function(err) {
         return console.error(err); 
