@@ -55,6 +55,10 @@ function createChatterMessage(id) {
   
 }
 
+function soslEscape(str) {
+  return str.replace("+","\\+").replace("-","\\-");
+}
+
 app.use(bodyParser.json());
 
 app.post('/', function (req, res, next) {
@@ -100,7 +104,8 @@ app.post('/', function (req, res, next) {
     console.log("Logged into Salesforce as", username);
 
     // Search for contact/lead with matching email address
-    return conn.search("FIND {"+user.profile.email+"} IN EMAIL FIELDS RETURNING Contact(Id), Lead(Id)");
+    // + in email address must be escaped
+    return conn.search("FIND {"+soslEscape(user.profile.email)+"} IN EMAIL FIELDS RETURNING Contact(Id), Lead(Id)");
   }, function(err) {
     return console.error(err); 
   })
