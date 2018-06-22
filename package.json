@@ -18,5 +18,5 @@
     "start": "node app.js"
   },
   "author": "pat@streamsets.com",
-  "license": "ISC"
+  "license": "Apache-2.0"
 }
