@@ -17,7 +17,20 @@ var conn = new jsforce.Connection({
   loginUrl : loginUrl
 });
 
+function splitName(user) {
+  var lastSpace = user.profile.real_name.lastIndexOf(" ");
+
+  if (lastSpace === -1) {
+    user.profile.last_name = user.profile.real_name;
+  } else {
+    user.profile.first_name = user.profile.real_name.substring(0, lastSpace + 1);
+    user.profile.last_name = user.profile.real_name.substring(lastSpace + 1, user.profile.real_name.length);    
+  }
+}
+
 function createLead(user, company) {
+  splitName(user);
+
   conn.sobject("Lead").create({ 
     FirstName : user.profile.first_name, 
     LastName : user.profile.last_name,
@@ -35,6 +48,8 @@ function createLead(user, company) {
 }
 
 function createContact(user, accountId) {
+  splitName(user);
+
   conn.sobject("Contact").create({ 
     FirstName : user.profile.first_name, 
     LastName : user.profile.last_name,
