@@ -76,14 +76,14 @@ function createContact(user, accountId, ownerId) {
   })
   .then(function(ret) {
     console.log("Created contact id : " + ret.id);
-    chatterNewEntity(ret.id, "Contact", user.profile.display_name);
+    chatterNewEntity(ret.id, "Contact", user.profile.display_name, ownerId);
   }, function(err) {
     return console.error(err); 
   });  
 }
 
-function chatterEntity(id, text, displayName) {
-  conn.chatter.resource('/feed-elements').create({
+function chatterEntity(id, text, displayName, ownerId) {
+  var feedItem = {
     body : {
       messageSegments : [
        {
@@ -106,7 +106,17 @@ function chatterEntity(id, text, displayName) {
     },
     feedElementType : "FeedItem",
     subjectId : id
-  })
+  };
+
+  if (ownerId) {
+    feedItem.body.messageSegments.unshift({
+      "type" : "Mention",
+      "id" : ownerId
+    });
+    feedItem.body.messageSegments[1].text = " " + feedItem.body.messageSegments[1].text;
+  }
+
+  conn.chatter.resource('/feed-elements').create(feedItem)
   .then(function (ret){
     console.log("Created feed item: " + ret.id);
   }, function (err) {
@@ -114,12 +124,12 @@ function chatterEntity(id, text, displayName) {
   });
 }
 
-function chatterExistingEntity(id, type, displayName) {
-  chatterEntity(id, type+" joined Community Slack as ", displayName);
+function chatterExistingEntity(id, type, displayName, ownerId) {
+  chatterEntity(id, type+" joined Community Slack as ", displayName, ownerId);
 }
 
-function chatterNewEntity(id, type, displayName) {
-  chatterEntity(id, "New "+type+" joined Community Slack as ", displayName);
+function chatterNewEntity(id, type, displayName, ownerId) {
+  chatterEntity(id, "New "+type+" joined Community Slack as ", displayName, ownerId);
 }
 
 function soslEscape(str) {
@@ -169,7 +179,7 @@ app.post('/', function (req, res, next) {
 
     // Search for contact/lead with matching email address
     // + in email address must be escaped
-    return conn.search("FIND {"+soslEscape(user.profile.email)+"} IN EMAIL FIELDS RETURNING Contact(Id), Lead(Id)");
+    return conn.search("FIND {"+soslEscape(user.profile.email)+"} IN EMAIL FIELDS RETURNING Contact(Id, OwnerId), Lead(Id, OwnerId)");
   }, function(err) {
     return console.error(err); 
   })
@@ -178,8 +188,9 @@ app.post('/', function (req, res, next) {
     if (ret.searchRecords.length > 0) {
       var id = ret.searchRecords[0].Id;
       var type = ret.searchRecords[0].attributes.type;
+      var ownerId = ret.searchRecords[0].OwnerId;
       console.log("Found "+type+" with id", id);
-      chatterExistingEntity(id, type, user.profile.display_name);
+      chatterExistingEntity(id, type, user.profile.display_name, ownerId);
     } else {
       // Check email address with Kickfire
       rp({
