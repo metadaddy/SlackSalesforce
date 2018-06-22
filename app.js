@@ -32,6 +32,8 @@ var conn = new jsforce.Connection({
   loginUrl : loginUrl
 });
 
+var lastUserId;
+
 function splitName(user) {
   var lastSpace = user.profile.real_name.lastIndexOf(" ");
 
@@ -52,7 +54,7 @@ function createLead(user, company) {
     Email: user.profile.email,
     HasOptedOutOfEmail: true,
     LeadSource: 'Community',
-    Company : company
+    Company : company || 'Unknown'
   })
   .then(function(ret) {
     console.log("Created lead id : " + ret.id);
@@ -154,6 +156,14 @@ app.post('/', function (req, res, next) {
   var user = req.body.event.user;
   console.log("user from request", user);
 
+  if (user.id === lastUserId) {
+    // Filter out duplicate request
+    res.send('ok');
+    return;
+  }
+
+  lastUserId = user.id;
+
   var domain;
 
   // Get user's email address - it doesn't arrive in the request!
@@ -233,18 +243,14 @@ app.post('/', function (req, res, next) {
             if (!accountId) {
               console.log("No accountId");
               // Couldn't find an account
-              if (company) {
-                createLead(user, company);
-              } else {
-                createLead(user, "Unknown");
-              }
+              createLead(user, company);
             }
           }, function(err) {
             return console.error(err); 
           });
         } else {
           // Kickfire didn't find a match, or it's an ISP email address
-          createLead(user, "Unknown");
+          createLead(user);
         }
       }, function(err) {
         return console.error(err); 
