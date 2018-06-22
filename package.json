@@ -1,0 +1,21 @@
+{
+  "name": "slack-salesforce",
+  "version": "1.0.0",
+  "description": "",
+  "main": "app.js",
+  "dependencies": {
+    "body-parser": "^1.18.3",
+    "express": "^4.16.3",
+    "jsforce": "^1.8.4",
+    "nodemon": "^1.17.5",
+    "npm": "^6.1.0",
+    "request": "^2.87.0",
+    "request-promise": "^4.2.2"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "pat@streamsets.com",
+  "license": "ISC"
+}
