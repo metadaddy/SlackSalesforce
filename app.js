@@ -141,15 +141,18 @@ function soslEscape(str) {
 app.use(bodyParser.json());
 
 app.post('/', function (req, res, next) {
+  if (slackToken === req.body.token) {
+    console.log("Token is good");
+  } else {
+    console.log("Bad token: "+req.body.token);
+    res.status(403).send("Unauthorized");
+    return;
+  }
+
   if (req.body.challenge) {
     // Slack verification
     console.log("Slack challenge");
-    if (slackToken === req.body.token) {
-      console.log("Token is good");
-      res.send(req.body.challenge);      
-    } else {
-      res.status(403).send("Unauthorized");
-    }
+    res.send(req.body.challenge);      
     return;
   }
 
