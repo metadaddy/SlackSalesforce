@@ -73,6 +73,8 @@ app.post('/', function (req, res, next) {
   var user = req.body.event.user;
   console.log("user in request", user);
 
+  var domain;
+
   // Get user's email address - it doesn't arrive in the request!
   rp({
     uri: "https://slack.com/api/users.profile.get?token="+slackOauth+"&user="+user.id,
@@ -85,15 +87,16 @@ app.post('/', function (req, res, next) {
     return console.error(err); 
   })
   .then(function(ret){
-    var domain = user.profile.email.split('@')[1];
+    domain = user.profile.email.split('@')[1];
     console.log("domain", domain);
 
     // Login to Salesforce
-    conn.login(username, password)
+    return conn.login(username, password);
   }, function(err) {
     return console.error(err); 
   })  
   .then(function(userInfo) {
+    console.log(userInfo);
     console.log("Logged into Salesforce as", username);
 
     // Search for contact/lead with matching email address
