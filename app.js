@@ -50,7 +50,7 @@ function createContact(user, accountId) {
 }
 
 function createChatterMessage(id) {
-  // TBD
+  
 }
 
 app.use(bodyParser.json());
