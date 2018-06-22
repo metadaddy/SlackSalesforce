@@ -19,7 +19,7 @@ var rp = require('request-promise');
 
 var username = process.env.USERNAME;
 var password = process.env.PASSWORD;
-var loginUrl = process.env.LOGIN_URL | 'https://login.salesforce.com';
+var loginUrl = process.env.LOGIN_URL || 'https://login.salesforce.com';
 var kickfireKey = process.env.KICKFIRE_KEY;
 var slackToken = process.env.SLACK_TOKEN;
 var slackOauth = process.env.SLACK_OAUTH_TOKEN;
