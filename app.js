@@ -7,6 +7,7 @@ var password = process.env.PASSWORD;
 var loginUrl = process.env.LOGIN_URL | 'https://login.salesforce.com';
 var kickfireKey = process.env.KICKFIRE_KEY;
 var slackToken = process.env.SLACK_TOKEN;
+var slackOauth = process.env.SLACK_OAUTH_TOKEN;
 
 var express = require('express'),
   app = express(),
@@ -70,11 +71,28 @@ app.post('/', function (req, res, next) {
   }
 
   var user = req.body.event.user;
-  console.log("user", user);
-  var domain = user.profile.email.split('@')[1];
-  console.log("domain", domain);
+  console.log("user in request", user);
 
-  conn.login(username, password)
+  // Get user's email address - it doesn't arrive in the request!
+  rp({
+    uri: "https://slack.com/api/users.profile.get?token="+slackOauth+"&user="+user.id,
+    json: true
+  })
+  .then(function(ret){
+    console.log(ret);
+    user.profile.email = ret.profile.email;
+  }, function(err) {
+    return console.error(err); 
+  })
+  .then(function(ret){
+    var domain = user.profile.email.split('@')[1];
+    console.log("domain", domain);
+
+    // Login to Salesforce
+    conn.login(username, password)
+  }, function(err) {
+    return console.error(err); 
+  })  
   .then(function(userInfo) {
     console.log("Logged into Salesforce as", username);
 
