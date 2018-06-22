@@ -36,3 +36,6 @@ node_modules
 # AWS stuff for publishing static files
 .aws-credentials.json
 .awspublish*
+
+challenge.json
+event.json

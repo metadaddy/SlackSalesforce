@@ -6,6 +6,7 @@ var username = process.env.USERNAME;
 var password = process.env.PASSWORD;
 var loginUrl = process.env.LOGIN_URL | 'https://login.salesforce.com';
 var kickfireKey = process.env.KICKFIRE_KEY;
+var slackToken = process.env.SLACK_TOKEN;
 
 var express = require('express'),
   app = express(),
@@ -56,6 +57,18 @@ function createChatterMessage(id) {
 app.use(bodyParser.json());
 
 app.post('/', function (req, res, next) {
+  if (req.body.challenge) {
+    // Slack verification
+    console.log("Slack challenge");
+    if (slackToken === req.body.token) {
+      console.log("Token is good");
+      res.send(req.body.challenge);      
+    } else {
+      res.status(403).send("Unauthorized");
+    }
+    return;
+  }
+
   var user = req.body.event.user;
   console.log("user", user);
   var domain = user.profile.email.split('@')[1];
