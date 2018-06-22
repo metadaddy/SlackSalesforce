@@ -62,7 +62,7 @@ function createLead(user, company) {
   });
 }
 
-function createContact(user, accountId) {
+function createContact(user, accountId, ownerId) {
   splitName(user);
 
   conn.sobject("Contact").create({ 
@@ -71,7 +71,8 @@ function createContact(user, accountId) {
     Email: user.profile.email,
     HasOptedOutOfEmail: true,
     LeadSource: 'Community',
-    AccountId : accountId
+    AccountId : accountId,
+    OwnerId: ownerId
   })
   .then(function(ret) {
     console.log("Created contact id : " + ret.id);
