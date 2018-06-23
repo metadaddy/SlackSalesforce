@@ -58,7 +58,7 @@ function createLead(user, company) {
   })
   .then(function(ret) {
     console.log("Created lead id : " + ret.id);
-    chatterNewEntity(ret.id, "Lead", user.profile.display_name);
+    chatterNewEntity(ret.id, "Lead", user);
   }, function(err) {
     return console.error(err); 
   });
@@ -78,13 +78,13 @@ function createContact(user, accountId, ownerId) {
   })
   .then(function(ret) {
     console.log("Created contact id : " + ret.id);
-    chatterNewEntity(ret.id, "Contact", user.profile.display_name, ownerId);
+    chatterNewEntity(ret.id, "Contact", user, ownerId);
   }, function(err) {
     return console.error(err); 
   });  
 }
 
-function chatterEntity(id, text, displayName, ownerId) {
+function chatterEntity(id, text, user, ownerId) {
   var feedItem = {
     body : {
       messageSegments : [
@@ -98,7 +98,7 @@ function chatterEntity(id, text, displayName, ownerId) {
        },
        {
          type : "Text",
-         text : displayName
+         text : user.profile.display_name || user.profile.real_name
        },
        {
          type : "MarkupEnd",
@@ -126,12 +126,12 @@ function chatterEntity(id, text, displayName, ownerId) {
   });
 }
 
-function chatterExistingEntity(id, type, displayName, ownerId) {
-  chatterEntity(id, type+" joined Community Slack as ", displayName, ownerId);
+function chatterExistingEntity(id, type, user, ownerId) {
+  chatterEntity(id, type+" joined Community Slack as ", user, ownerId);
 }
 
-function chatterNewEntity(id, type, displayName, ownerId) {
-  chatterEntity(id, "New "+type+" joined Community Slack as ", displayName, ownerId);
+function chatterNewEntity(id, type, user, ownerId) {
+  chatterEntity(id, "New "+type+" joined Community Slack as ", user, ownerId);
 }
 
 function soslEscape(str) {
@@ -203,7 +203,7 @@ app.post('/', function (req, res, next) {
       var type = ret.searchRecords[0].attributes.type;
       var ownerId = ret.searchRecords[0].OwnerId;
       console.log("Found "+type+" with id", id);
-      chatterExistingEntity(id, type, user.profile.display_name, ownerId);
+      chatterExistingEntity(id, type, user, ownerId);
     } else {
       // Check email address with Kickfire
       rp({
