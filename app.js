@@ -54,6 +54,7 @@ function createLead(user, company) {
     Email: user.profile.email,
     HasOptedOutOfEmail: true,
     LeadSource: 'Community',
+    Account_Tier__c: 'Tier 3: MM',
     Company : company || 'Unknown'
   })
   .then(function(ret) {
@@ -176,7 +177,7 @@ app.post('/', function (req, res, next) {
   })
   .then(function(ret){
     console.log("user from API", ret);
-    user.profile.email = ret.profile.email;
+    user = ret;
 
     domain = user.profile.email.split('@')[1];
     console.log("domain", domain);
@@ -203,7 +204,22 @@ app.post('/', function (req, res, next) {
       var type = ret.searchRecords[0].attributes.type;
       var ownerId = ret.searchRecords[0].OwnerId;
       console.log("Found "+type+" with id", id);
-      chatterExistingEntity(id, type, user, ownerId);
+      // Is the owner a group?
+      if (ownerId.startsWith('00G')) {
+        // Check the type of the group
+        conn.sobject('Group').retrieve(ownerId)
+        .then(function(ret) {
+          if (ret.Type != 'Regular') {
+            // Can't mention queues etc
+            ownerId = null;
+          }
+          chatterExistingEntity(id, type, user, ownerId);
+        }, function(err) {
+          return console.error(err); 
+        })
+      } else {
+        chatterExistingEntity(id, type, user, ownerId);
+      }
     } else {
       // Check email address with Kickfire
       rp({
