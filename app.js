@@ -54,8 +54,8 @@ function createLead(user, company) {
     Email: user.profile.email,
     HasOptedOutOfEmail: true,
     LeadSource: 'Community',
-    Account_Tier__c: 'Tier 3: MM',
-    Company : company || 'Unknown'
+    Company : company || 'Unknown',
+    Slack_ID__c : user.id
   })
   .then(function(ret) {
     console.log("Created lead id : " + ret.id);
@@ -75,7 +75,8 @@ function createContact(user, accountId, ownerId) {
     HasOptedOutOfEmail: true,
     LeadSource: 'Community',
     AccountId : accountId,
-    OwnerId: ownerId
+    OwnerId: ownerId,
+    Slack_ID__c : user.id
   })
   .then(function(ret) {
     console.log("Created contact id : " + ret.id);
@@ -177,6 +178,10 @@ app.post('/', function (req, res, next) {
   })
   .then(function(ret){
     console.log("user from API", ret);
+
+    // For some reason, the users.profile.get response doesn't include user id!
+    ret.id = user.id;
+
     user = ret;
 
     domain = user.profile.email.split('@')[1];
