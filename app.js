@@ -59,7 +59,7 @@ function createLead(user, company) {
   })
   .then(function(ret) {
     console.log("Created lead id : " + ret.id);
-    chatterNewEntity(ret.id, "Lead", user);
+    chatterEntity(ret.id, "New Lead joined Community Slack as ", user);
   }, function(err) {
     return console.error(err); 
   });
@@ -80,7 +80,7 @@ function createContact(user, accountId, ownerId) {
   })
   .then(function(ret) {
     console.log("Created contact id : " + ret.id);
-    chatterNewEntity(ret.id, "Contact", user, ownerId);
+    chatterEntity(ret.id, "New Contact joined Community Slack as ", user, ownerId);
   }, function(err) {
     return console.error(err); 
   });  
@@ -128,12 +128,16 @@ function chatterEntity(id, text, user, ownerId) {
   });
 }
 
-function chatterExistingEntity(id, type, user, ownerId) {
-  chatterEntity(id, type+" joined Community Slack as ", user, ownerId);
-}
-
-function chatterNewEntity(id, type, user, ownerId) {
-  chatterEntity(id, "New "+type+" joined Community Slack as ", user, ownerId);
+function updateExistingEntity(id, type, user, ownerId) {
+  conn.sobject(type).update({ 
+    Id : id,
+    Slack_ID__c : user.id
+  }).then(function (ret) {
+    console.log("Set Slack ID on existing ", type);
+    chatterEntity(id, type+" joined Community Slack as ", user, ownerId);
+  }, function (err) {
+    console.error(err);
+  });
 }
 
 function soslEscape(str) {
@@ -218,12 +222,12 @@ app.post('/', function (req, res, next) {
             // Can't mention queues etc
             ownerId = null;
           }
-          chatterExistingEntity(id, type, user, ownerId);
+          updateExistingEntity(id, type, user, ownerId);
         }, function(err) {
           return console.error(err); 
         })
       } else {
-        chatterExistingEntity(id, type, user, ownerId);
+        updateExistingEntity(id, type, user, ownerId);
       }
     } else {
       // Check email address with Kickfire
