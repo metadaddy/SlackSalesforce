@@ -42,3 +42,4 @@ event.json
 feedElement.json
 
 .env
+.devenv

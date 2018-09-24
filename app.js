@@ -23,6 +23,7 @@ var loginUrl = process.env.LOGIN_URL || 'https://login.salesforce.com';
 var kickfireKey = process.env.KICKFIRE_KEY;
 var slackToken = process.env.SLACK_TOKEN;
 var slackOauth = process.env.SLACK_OAUTH_TOKEN;
+var slackCampaignId = process.env.CAMPAIGN_ID;
 
 var express = require('express'),
   app = express(),
@@ -31,118 +32,6 @@ var express = require('express'),
 var conn = new jsforce.Connection({
   loginUrl : loginUrl
 });
-
-var lastUserId;
-
-function splitName(user) {
-  var lastSpace = user.profile.real_name.lastIndexOf(" ");
-
-  if (lastSpace === -1) {
-    user.profile.last_name = user.profile.real_name;
-  } else {
-    user.profile.first_name = user.profile.real_name.substring(0, lastSpace + 1);
-    user.profile.last_name = user.profile.real_name.substring(lastSpace + 1, user.profile.real_name.length);    
-  }
-}
-
-function createLead(user, company) {
-  splitName(user);
-
-  conn.sobject("Lead").create({ 
-    FirstName : user.profile.first_name, 
-    LastName : user.profile.last_name,
-    Email: user.profile.email,
-    HasOptedOutOfEmail: true,
-    LeadSource: 'Community',
-    Company : company || 'Unknown',
-    Slack_ID__c : user.id
-  })
-  .then(function(ret) {
-    console.log("Created lead id : " + ret.id);
-    chatterEntity(ret.id, "New Lead joined Community Slack as ", user);
-  }, function(err) {
-    return console.error(err); 
-  });
-}
-
-function createContact(user, accountId, ownerId) {
-  splitName(user);
-
-  conn.sobject("Contact").create({ 
-    FirstName : user.profile.first_name, 
-    LastName : user.profile.last_name,
-    Email: user.profile.email,
-    HasOptedOutOfEmail: true,
-    LeadSource: 'Community',
-    AccountId : accountId,
-    OwnerId: ownerId,
-    Slack_ID__c : user.id
-  })
-  .then(function(ret) {
-    console.log("Created contact id : " + ret.id);
-    chatterEntity(ret.id, "New Contact joined Community Slack as ", user, ownerId);
-  }, function(err) {
-    return console.error(err); 
-  });  
-}
-
-function chatterEntity(id, text, user, ownerId) {
-  var feedItem = {
-    body : {
-      messageSegments : [
-       {
-         type : "Text",
-         text : text
-       },
-       {
-         type : "MarkupBegin",
-         markupType : "Bold"
-       },
-       {
-         type : "Text",
-         text : user.profile.display_name || user.profile.real_name
-       },
-       {
-         type : "MarkupEnd",
-         markupType : "Bold"
-       },
-      ]
-    },
-    feedElementType : "FeedItem",
-    subjectId : id
-  };
-
-  if (ownerId) {
-    feedItem.body.messageSegments.unshift({
-      "type" : "Mention",
-      "id" : ownerId
-    });
-    feedItem.body.messageSegments[1].text = " " + feedItem.body.messageSegments[1].text;
-  }
-
-  conn.chatter.resource('/feed-elements').create(feedItem)
-  .then(function (ret){
-    console.log("Created feed item: " + ret.id);
-  }, function (err) {
-    console.error(err);
-  });
-}
-
-function updateExistingEntity(id, type, user, ownerId) {
-  conn.sobject(type).update({ 
-    Id : id,
-    Slack_ID__c : user.id
-  }).then(function (ret) {
-    console.log("Set Slack ID on existing ", type);
-    chatterEntity(id, type+" joined Community Slack as ", user, ownerId);
-  }, function (err) {
-    console.error(err);
-  });
-}
-
-function soslEscape(str) {
-  return str.replace("+","\\+").replace("-","\\-");
-}
 
 app.use(bodyParser.json());
 
@@ -165,16 +54,9 @@ app.post('/', function (req, res, next) {
   var user = req.body.event.user;
   console.log("user from request", user);
 
-  if (user.id === lastUserId) {
-    // Filter out duplicate request
-    res.send('ok');
-    return;
-  }
-
-  lastUserId = user.id;
-
   var domain;
 
+  // 1
   // Get user's email address - it doesn't arrive in the request!
   rp({
     uri: "https://slack.com/api/users.profile.get?token="+slackOauth+"&user="+user.id,
@@ -191,6 +73,7 @@ app.post('/', function (req, res, next) {
     domain = user.profile.email.split('@')[1];
     console.log("domain", domain);
 
+    // 2
     // Login to Salesforce
     return conn.login(username, password);
   }, function(err) {
@@ -200,9 +83,12 @@ app.post('/', function (req, res, next) {
     console.log(userInfo);
     console.log("Logged into Salesforce as", username);
 
+    // 3
     // Search for contact/lead with matching email address
     // + in email address must be escaped
-    return conn.search("FIND {"+soslEscape(user.profile.email)+"} IN EMAIL FIELDS RETURNING Contact(Id, OwnerId), Lead(Id, OwnerId)");
+    return conn.search("FIND {"+soslEscape(user.profile.email)+"} "+
+      "IN EMAIL FIELDS "+
+      "RETURNING Contact(Id, OwnerId), Lead(Id, OwnerId)");
   }, function(err) {
     return console.error(err); 
   })
@@ -222,15 +108,28 @@ app.post('/', function (req, res, next) {
             // Can't mention queues etc
             ownerId = null;
           }
-          updateExistingEntity(id, type, user, ownerId);
+          return addEntityToCampaign(id, type, slackCampaignId);
         }, function(err) {
           return console.error(err); 
         })
+        .then(function (ret) {
+          console.log("Added " + type + " to campaign " + slackCampaignId);
+          updateExistingEntity(id, type, user, ownerId);
+        }, function (err) {
+          console.error(err);
+        });
       } else {
-        updateExistingEntity(id, type, user, ownerId);
+        addEntityToCampaign(id, type, slackCampaignId)
+        .then(function (ret) {
+          console.log("Added " + type + " to campaign " + slackCampaignId);
+          updateExistingEntity(id, type, user, ownerId);
+        }, function (err) {
+          console.error(err);
+        });
       }
     } else {
-      // Check email address with Kickfire
+      // 4
+      // Check email domain with Kickfire
       rp({
         uri: "https://api.kickfire.com/v2/company?website="+domain+"&key="+kickfireKey,
         json: true
@@ -293,3 +192,144 @@ app.post('/', function (req, res, next) {
 });
 
 app.listen(port);
+
+function splitName(user) {
+  var lastSpace = user.profile.real_name.lastIndexOf(" ");
+
+  if (lastSpace === -1) {
+    user.profile.last_name = user.profile.real_name;
+  } else {
+    user.profile.first_name = user.profile.real_name.substring(0, lastSpace + 1);
+    user.profile.last_name = user.profile.real_name.substring(lastSpace + 1, user.profile.real_name.length);    
+  }
+}
+
+// 5
+function createLead(user, company) {
+  splitName(user);
+
+  conn.sobject("Lead").create({ 
+    FirstName : user.profile.first_name, 
+    LastName : user.profile.last_name,
+    Email: user.profile.email,
+    HasOptedOutOfEmail: true,
+    LeadSource: 'Community',
+    Company : company || 'Unknown',
+    Slack_ID__c : user.id
+  })
+  .then(function(ret) {
+    leadId = ret.id;
+    console.log("Created lead id : " + ret.id);
+    return addEntityToCampaign(ret.id, "Lead", slackCampaignId);
+  }, function(err) {
+    return console.error(err);
+  })
+  .then(function(ret) {
+    console.log("Added Lead to campaign " + slackCampaignId);
+    return chatterEntity(leadId, "New Lead joined Community Slack as ", user);
+  }, function(err) {
+    return console.error(err); 
+  });
+}
+
+function createContact(user, accountId, ownerId) {
+  splitName(user);
+
+  conn.sobject("Contact").create({ 
+    FirstName : user.profile.first_name, 
+    LastName : user.profile.last_name,
+    Email: user.profile.email,
+    HasOptedOutOfEmail: true,
+    LeadSource: 'Community',
+    AccountId : accountId,
+    OwnerId: ownerId,
+    Slack_ID__c : user.id
+  })
+  .then(function(ret) {
+    contactId = ret.id;
+    console.log("Created contact id : " + ret.id);
+    return addEntityToCampaign(ret.id, "Contact", slackCampaignId);
+  }, function(err) {
+    return console.error(err);
+  })
+  .then(function(ret) {
+    console.log("Added Contact to campaign " + slackCampaignId);
+    return chatterEntity(contactId, "New Contact joined Community Slack as ", user, ownerId);
+  }, function(err) {
+    return console.error(err); 
+  });  
+}
+
+// 6
+function chatterEntity(id, text, user, ownerId) {
+  var feedItem = {
+    body : {
+      messageSegments : [
+       {
+         type : "Text",
+         text : text
+       },
+       {
+         type : "MarkupBegin",
+         markupType : "Bold"
+       },
+       {
+         type : "Text",
+         text : user.profile.display_name || user.profile.real_name
+       },
+       {
+         type : "MarkupEnd",
+         markupType : "Bold"
+       },
+      ]
+    },
+    feedElementType : "FeedItem",
+    subjectId : id
+  };
+
+  if (ownerId) {
+    feedItem.body.messageSegments.unshift({
+      "type" : "Mention",
+      "id" : ownerId
+    });
+    feedItem.body.messageSegments[1].text = " " + feedItem.body.messageSegments[1].text;
+  }
+
+  conn.chatter.resource('/feed-elements').create(feedItem)
+  .then(function (ret){
+    console.log("Created feed item: " + ret.id);
+  }, function (err) {
+    console.error(err);
+  });
+}
+
+function updateExistingEntity(id, type, user, ownerId) {
+  conn.sobject(type).update({ 
+    Id : id,
+    Slack_ID__c : user.id
+  }).then(function (ret) {
+    console.log("Set Slack ID on existing ", type);
+    return chatterEntity(id, type+" joined Community Slack as ", user, ownerId);
+  }, function (err) {
+    console.error(err);
+  });
+}
+
+function addEntityToCampaign(id, type, campaignId) {
+  var obj = {
+    CampaignId : campaignId,
+    Status : 'Member'
+  };
+
+  if (type === 'Lead') {
+    obj.LeadId = id;
+  } else {
+    obj.ContactId = id;
+  }
+
+  return conn.sobject('CampaignMember').create(obj);
+}
+
+function soslEscape(str) {
+  return str.replace("+","\\+").replace("-","\\-");
+}
